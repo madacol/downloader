@@ -1,21 +1,28 @@
 #!/bin/bash
 
 ### Config vars
-download_list='/home/pi/downloadList'
-download_dir='/home/pi/media/'
+download_list='./downloadList'
+download_dir='./media/'
 video_dir=$download_dir'videos'
 audio_dir=$download_dir'audios'
 temp_dir='/tmp/youtube-dl-manager/'
 tail_pid=$temp_dir'tailPid'
+max_quality='720'
 ###
 
+# Create folders if they don't exists
+test -s $download_dir || (read -p "Create folder '"$(pwd)"/media'?" -n 1 -r && mkdir $download_dir)
+test -s $video_dir || mkdir $video_dir
+test -s $audio_dir || mkdir $audio_dir
 test -s $temp_dir || mkdir $temp_dir
+
 if [[ -s $download_list ]]; then
   tail -n+2 $download_list | tr ' ' '\n' > $temp_dir'audiosQueue'
   head -n1 $download_list | tr ' ' '\n' > $temp_dir'videosQueue'
 
   echo '## Audio list:'
   cat $temp_dir'audiosQueue'
+  echo;echo;
   echo '## Video list:'
   cat $temp_dir'videosQueue'
 
@@ -34,10 +41,11 @@ if [[ -s $download_list ]]; then
   echo
 fi
 echo
-echo '### Queue lists:'
+echo '# Queue lists:'
 echo
 echo '## Audio list:'
 cat $download_dir'audiosQueue'
+  echo;echo;
 echo '## Video list:'
 cat $download_dir'videosQueue'
 echo
@@ -46,12 +54,26 @@ echo
 read -p "Download lists? [y/n]: " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-  echo '### Downloading...'
+  echo '# Downloading...'
   test -s $tail_pid && kill $(cat $tail_pid) && > $tail_pid # Check if tail_pid exist, then kill it, and empty tail_pid
   > $temp_dir'output'
   tail -f $temp_dir'output' >/dev/stdout &
   echo $! > $tail_pid
-  cat $download_dir'audiosQueue' | xargs -I%% bash -c "youtube-dl -x '%%' >"$temp_dir"output && sed -i '/'\$(echo '%%' | rev | cut -d/ -f1 | rev)'/d' "$download_dir"audiosQueue && grep Destination "$temp_dir"output | head -n1 | cut -d\  -f3- | cut -d. -f-1 | awk '{print \"%% - \"\$0}' >> "$download_dir"audiosDownloaded"
-  cat $download_dir'videosQueue' | xargs -I%% bash -c "youtube-dl -f 'best[height<=720]/bestvideo[height<=720]+bestaudio' '%%' >"$temp_dir"output && sed -i '/'\$(echo '%%' | rev | cut -d/ -f1 | rev)'/d' "$download_dir"videosQueue && grep Destination "$temp_dir"output | head -n1 | cut -d\  -f3- | cut -d. -f-1 | awk '{print \"%% - \"\$0}' >> "$download_dir"videosDownloaded"
+  cat $download_dir'audiosQueue' | xargs -I%% bash -c "
+    youtube-dl -x '%%' -o '"$audio_dir"/%(uploader)s - %(title)s.%(ext)s' >"$temp_dir"output &&
+      sed -i '/'\$(echo '%%' | rev | cut -d/ -f1 | rev)'/d' "$download_dir"audiosQueue &&
+      grep Destination "$temp_dir"output |
+      head -n1 |
+      cut -d\  -f3- |
+      cut -d. -f-1 |
+      awk '{print \"%% - \"\$0}' >> "$download_dir"audiosDownloaded"
+  cat $download_dir'videosQueue' | xargs -I%% bash -c "
+    youtube-dl -f 'bestvideo[height<="$max_quality"]+bestaudio/best[height<="$max_quality"]' '%%' -o '"$video_dir"/%(uploader)s - %(title)s.%(ext)s' >"$temp_dir"output &&
+      sed -i '/'\$(echo '%%' | rev | cut -d/ -f1 | rev)'/d' "$download_dir"videosQueue &&
+      grep Destination "$temp_dir"output |
+      head -n1 |
+      cut -d\  -f3- |
+      cut -d. -f-1 |
+      awk '{print \"%% - \"\$0}' >> "$download_dir"videosDownloaded"
   kill $(cat $tail_pid) && rm $tail_pid
 fi
